@@ -266,7 +266,6 @@ export const useAgentConversation = () => {
         currentSourceRef.current = null;
       }
       audioQueueRef.current = [];
-      setIsPlayingQueue.current = false;
     };
   }, [startStreaming, isConnected, stopStreaming, playNextInQueue, interruptAgentPlayback]);
 

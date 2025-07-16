@@ -1,0 +1,81 @@
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Regular.woff2') format('woff2'),
+       url('/fonts/Gilroy-Regular.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Gilroy';
+  src: url('/fonts/Gilroy-Bold.woff2') format('woff2'),
+       url('/fonts/Gilroy-Bold.woff') format('woff');
+  font-weight: bold;
+  font-style: normal;
+}
+
+/* Portal-specific global styles */
+/* Add any styles here that should apply globally only within the /portal routes */
+
+/* Example:
+body {
+  --portal-primary-color: #0052cc;
+}
+
+.portal-text-primary {
+  color: var(--portal-primary-color);
+}
+*/
+
+/*
+ Remove Tailwind directives and full theme re-declarations.
+ These are typically handled by the main app/globals.css.
+ This file should contain ONLY portal-specific additions or overrides.
+*/
+
+/* Example of a portal-specific global style: */
+/* Set the font for the entire portal to Gilroy */
+.portal-scope {
+  font-family: "Gilroy", sans-serif;
+}
+
+/* Example of a portal-specific utility class */
+@layer utilities {
+  /* .portal-highlight class removed as bg-yellow-200 was causing an error */
+  /* .text-balance can be kept if it's specifically needed for the portal and not globally */
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Portal-specific button styling */
+.portal-scope .bg-slate-800 { /* Targeting buttons with bg-slate-800 within portal-scope */
+  color: white !important; /* Ensure text is white */
+}
+/* You might want to make the selector more specific if other elements use bg-slate-800 */
+/* For example, if your Button component has a specific data-attribute or class for submit buttons */
+
+/*
+  CSS variable overrides removed as they might contribute to hydration issues.
+  The portal's fixed light appearance is primarily managed by direct Tailwind classes
+  (e.g., bg-gray-50 on the layout wrapper, bg-white on cards/inputs)
+  and portal-specific component styling.
+*/
+
+/*
+  If you need to override specific CSS variables for the portal, you can do it like this:
+ Make sure these selectors are specific enough to apply only within the portal.
+ One way is to add a class to the body or a root portal div in app/portal/layout.tsx
+ and scope these variables to that class.
+
+ Example (assuming a .portal-scope class on a portal root element):
+ .portal-scope {
+   --primary: 10 80% 50%; // Different primary color for portal
+   --card: 0 0% 98%; // Slightly off-white card for portal
+ }
+
+ .portal-scope .dark {
+   --primary: 10 70% 60%;
+   --card: 0 0% 10%;
+ }
+*/

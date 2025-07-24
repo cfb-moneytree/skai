@@ -62,7 +62,7 @@ export default function QuizResultPlayer({ agentId }: QuizResultPlayerProps) {
           answered_option,
           is_correct,
           attempt_uuid,
-          quiz (
+          quiz!inner (
             question,
             options,
             correct_option
@@ -77,7 +77,7 @@ export default function QuizResultPlayer({ agentId }: QuizResultPlayerProps) {
         return;
       }
 
-      const grouped = (attemptsData as QuizAttempt[]).reduce((acc, attempt) => {
+      const grouped = (attemptsData.map(a => ({...a, quiz: a.quiz[0]})) as unknown as QuizAttempt[]).reduce((acc, attempt) => {
         const key = attempt.attempt_uuid;
         if (!acc[key]) {
           acc[key] = [];

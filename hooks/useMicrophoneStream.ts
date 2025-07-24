@@ -26,12 +26,12 @@ export const useMicrophoneStream = ({ onAudioChunked }: UseMicrophoneStreamProps
         bufferSize: 1024
       });
 
-      micStream.on('data', (chunk: Buffer) => {
+      (micStream as any).on('data', (chunk: Buffer) => {
         // The hook's consumer expects an ArrayBuffer
-        onAudioChunked(chunk.buffer);
+        onAudioChunked(new Uint8Array(chunk).buffer);
       });
 
-      micStream.on('error', (error) => {
+      (micStream as any).on('error', (error: Error) => {
         console.error("Microphone stream error:", error);
         // Consider adding state to propagate error to the UI
       });

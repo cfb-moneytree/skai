@@ -37,6 +37,7 @@ export default function SettingsOrganizationPage() {
   // --- ADDED: Quota State ---
   const [monthlyQuota, setMonthlyQuota] = useState<number | string>("");
   const [currentUsage, setCurrentUsage] = useState<number>(0);
+  const [quotaError, setQuotaError] = useState<string | null>(null);
   
   const fetchOrgData = useCallback(async () => {
     try {
@@ -231,6 +232,7 @@ export default function SettingsOrganizationPage() {
           <div className="mb-4">
             <p className="text-sm text-muted-foreground">Current Monthly Usage</p>
             <p className="text-2xl font-bold">{currentUsage.toLocaleString()} / {(typeof monthlyQuota === 'number' ? monthlyQuota : 0).toLocaleString()} minutes</p>
+           {quotaError && <p className="text-sm font-medium text-destructive mt-2">{quotaError}</p>}
           </div>
         </CardContent>
       </Card>

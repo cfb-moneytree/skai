@@ -146,7 +146,7 @@ export default function CreateAgentPage() {
             category_id: fetchedAgentData.category_id,
           }));
           
-          setMonthlyPlayLimit(fetchedAgentData.monthly_play_limit);
+          setMonthlyPlayLimit(fetchedAgentData.monthly_play_limit ?? null);
 
           if (fetchedAgentData.cover_image) {
             // This is a simplified example. In a real app, you'd fetch a signed URL
@@ -762,7 +762,7 @@ export default function CreateAgentPage() {
                   onChange={(e) => {
                     const value = e.target.value;
                     const parsedValue = value === "" ? null : parseInt(value, 10);
-                    setMonthlyPlayLimit(parsedValue >= 0 ? parsedValue : null);
+                    setMonthlyPlayLimit(parsedValue !== null && parsedValue >= 0 ? parsedValue : null);
                   }}
                   min="0"
                 />

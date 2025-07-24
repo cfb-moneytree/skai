@@ -568,7 +568,7 @@ export default function CoursePlayer({ courseId }: CoursePlayerProps) {
                     <h1 className="text-3xl font-bold mb-2">{course.title}</h1>
                     <p className="text-slate-300 mb-2">Ready to start?</p>
                     <div className="flex items-center gap-2 mb-6">
-                      <Badge variant={remainingPlays === 0 ? "destructive" : remainingPlays <= 2 ? "warning" : "default"} className="text-sm">
+                      <Badge variant={remainingPlays === 0 ? "destructive" : "default"} className="text-sm">
                         {remainingPlays} / {playLimit} plays remaining
                       </Badge>
                     </div>

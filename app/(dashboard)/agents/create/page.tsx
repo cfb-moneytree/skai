@@ -49,6 +49,7 @@ export default function CreateAgentPage() {
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [coverImage, setCoverImage] = useState<File | null>(null);
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
+  const [monthlyPlayLimit, setMonthlyPlayLimit] = useState<number | null>(null);
 
   // State for Knowledge Base Text Input
   const [kbNameInput, setKbNameInput] = useState("");
@@ -144,6 +145,8 @@ export default function CreateAgentPage() {
             passing_score: fetchedAgentData.passing_score || 0,
             category_id: fetchedAgentData.category_id,
           }));
+          
+          setMonthlyPlayLimit(fetchedAgentData.monthly_play_limit);
 
           if (fetchedAgentData.cover_image) {
             // This is a simplified example. In a real app, you'd fetch a signed URL
@@ -305,6 +308,7 @@ export default function CreateAgentPage() {
     if (coverImage) {
       formData.append('cover_image', coverImage);
     }
+    formData.append('monthly_play_limit', monthlyPlayLimit === null ? '' : monthlyPlayLimit.toString());
     
     const apiPath = isEditMode ? `/api/agents/${agentIdToEdit}` : "/api/agents/create";
     const httpMethod = isEditMode ? "PATCH" : "POST";
@@ -747,6 +751,21 @@ export default function CreateAgentPage() {
                     {isEditMode ? "Currently live" : "Not yet published"}
                   </span>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="monthly_play_limit">Monthly Play Limit per User</Label>
+                <Input
+                  id="monthly_play_limit"
+                  type="number"
+                  placeholder="e.g., 5"
+                  value={monthlyPlayLimit ?? ""}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const parsedValue = value === "" ? null : parseInt(value, 10);
+                    setMonthlyPlayLimit(parsedValue >= 0 ? parsedValue : null);
+                  }}
+                  min="0"
+                />
               </div>
 
               <div className="space-y-2">

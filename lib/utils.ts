@@ -7,36 +7,30 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export async function calculateAverageScores(supabase: SupabaseClient, agentIds: string[]): Promise<{ agentId: string; averageScore: number }[]> {
-  const { data: assignmentsData, error: assignmentsError } = await supabase
-    .from("user_agent_assignments")
-    .select("user_id, agent_mapping_id")
-    .in("agent_mapping_id", agentIds);
+  const { data: scoresData, error: scoresError } = await supabase
+    .from('quiz_attempt_scores')
+    .select('agent_id, user_id, score')
+    .in('agent_id', agentIds);
 
-  if (assignmentsError) {
-    console.error("Error fetching assignments:", assignmentsError);
+  if (scoresError) {
+    console.error('Error fetching scores:', scoresError);
     return [];
   }
 
-  const { data: progressData, error: progressError } = await supabase
-    .from("user_agents_progress")
-    .select("user_id, score, agent_id")
-    .in("agent_id", agentIds);
-
-  if (progressError) {
-    console.error("Error fetching progress:", progressError);
-    return [];
+  const highestScores: { [key: string]: { [key: string]: number } } = {};
+  for (const score of scoresData) {
+    if (!highestScores[score.agent_id]) {
+      highestScores[score.agent_id] = {};
+    }
+    if (!highestScores[score.agent_id][score.user_id] || score.score > highestScores[score.agent_id][score.user_id]) {
+      highestScores[score.agent_id][score.user_id] = score.score;
+    }
   }
 
   const results = agentIds.map(agentId => {
-    const assignmentsForAgent = assignmentsData.filter(a => a.agent_mapping_id === agentId);
-    const progressForAgent = progressData.filter(p => p.agent_id === agentId);
-
-    const totalStudents = assignmentsForAgent.length;
-    let totalScore = 0;
-    for (const progress of progressForAgent) {
-      totalScore += progress.score || 0;
-    }
-    const averageScore = totalStudents > 0 ? totalScore / totalStudents : 0;
+    const agentScores = highestScores[agentId] ? Object.values(highestScores[agentId]) : [];
+    const totalScore = agentScores.reduce((acc, score) => acc + score, 0);
+    const averageScore = agentScores.length > 0 ? totalScore / agentScores.length : 0;
     return { agentId, averageScore };
   });
 
@@ -148,12 +142,32 @@ export async function getStudentsForAgents(supabase: SupabaseClient, agentIds: s
 
   const { data: progressData, error: progressError } = await supabase
     .from('user_agents_progress')
-    .select('user_id, agent_id, score, is_complete')
+    .select('user_id, agent_id, is_complete')
     .in('user_id', userIds);
 
   if (progressError) {
     console.error('Error fetching progress:', progressError);
     return [];
+  }
+  
+  const { data: scoresData, error: scoresError } = await supabase
+    .from('quiz_attempt_scores')
+    .select('user_id, agent_id, score')
+    .in('user_id', userIds);
+
+  if (scoresError) {
+    console.error('Error fetching scores:', scoresError);
+    return [];
+  }
+
+  const highestScores: { [key: string]: { [key: string]: number } } = {};
+  for (const score of scoresData) {
+    if (!highestScores[score.user_id]) {
+      highestScores[score.user_id] = {};
+    }
+    if (!highestScores[score.user_id][score.agent_id] || score.score > highestScores[score.user_id][score.agent_id]) {
+      highestScores[score.user_id][score.agent_id] = score.score;
+    }
   }
 
   const { data: agentsData, error: agentsError } = await supabase
@@ -175,14 +189,17 @@ export async function getStudentsForAgents(supabase: SupabaseClient, agentIds: s
 
     const passedCoursesCount = completedCourses.filter(c => {
       const agent = agentsData.find(a => a.id === c.agent_id);
-      return agent && (c.score || 0) >= (agent.passing_score || 0);
+      const score = highestScores[user.id] ? highestScores[user.id][c.agent_id] : 0;
+      return agent && (score || 0) >= (agent.passing_score || 0);
     }).length;
     const passingPercentage = completedCoursesCount > 0 ? (passedCoursesCount / completedCoursesCount) * 100 : 0;
 
     const scores: { [key: string]: number | null } = {};
-    progressData.filter(p => p.user_id === user.id).forEach(p => {
-      scores[p.agent_id] = p.score;
-    });
+    if (highestScores[user.id]) {
+      for (const agentId in highestScores[user.id]) {
+        scores[agentId] = highestScores[user.id][agentId];
+      }
+    }
 
     return {
       ...user,

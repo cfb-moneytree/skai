@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import {
   getElevenLabsAgentDetails,
   ElevenLabsAgentDetails,
-  AgentDataFromUI,
+  AgentDataFromUI as AgentDataFromAPIType,
   updateElevenLabsAgent,
-  deleteElevenLabsAgent
+  deleteElevenLabsAgent,
 } from "@/lib/elevenlabs/api";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+interface AgentDataFromUI extends AgentDataFromAPIType {
+  monthly_play_limit?: number;
+}
 
 export async function GET(
   request: Request,
@@ -50,7 +54,7 @@ export async function GET(
       );
     }
 
-    const responseData: AgentDataFromUI = {
+    const responseData: any = {
       name: agentData.agent_name || "",
       language: agentData.language || "en",
       voice_id: agentData.voice_id || "",
@@ -62,6 +66,21 @@ export async function GET(
       passing_score: agentData.passing_score || 0,
       category_id: agentData.category_id || "",
     };
+
+    const { data: limitData, error: limitError } = await supabase
+      .from('app_limits')
+      .select('value')
+      .eq('limit_type', 'monthly_agent_play')
+      .eq('applies_to_agent_id', agentData.id)
+      .is('applies_to_user_id', null)
+      .is('applies_to_organization_id', null)
+      .single();
+
+    if (limitData) {
+      responseData.monthly_play_limit = limitData.value;
+    } else {
+      responseData.monthly_play_limit = null;
+    }
 
     return NextResponse.json(responseData, { status: 200 });
   } catch (error) {
@@ -136,7 +155,7 @@ export async function PATCH(
     }
 
     const formData = await request.formData();
-    const agentUpdateData: Partial<AgentDataFromUI> = {
+    const agentUpdateData: any = {
       name: formData.get('name') as string,
       language: formData.get('language') as string,
       voice_id: formData.get('voice_id') as string,
@@ -146,7 +165,15 @@ export async function PATCH(
       passing_score: parseFloat(formData.get('passing_score') as string),
       category_id: formData.get('category_id') as string,
     };
+    const monthlyPlayLimit = formData.get('monthly_play_limit') as string | null;
     const coverImageFile = formData.get('cover_image') as File | null;
+
+    if (!monthlyPlayLimit) {
+      return NextResponse.json(
+        { message: "Monthly play limit is required." },
+        { status: 400 }
+      );
+    }
 
     if (agentUpdateData.passing_score && (agentUpdateData.passing_score < 0 || agentUpdateData.passing_score > 100)) {
       return NextResponse.json(
@@ -213,6 +240,46 @@ export async function PATCH(
         },
         { status: 500 }
       );
+    }
+
+    if (monthlyPlayLimit !== null && monthlyPlayLimit !== '') {
+      console.log(`[API PATCH /agents/${elevenlabsAgentId}] Attempting to upsert limit with value:`, monthlyPlayLimit);
+      
+      const { data: limitData, error: limitError } = await supabase
+        .from('app_limits')
+        .upsert({
+          limit_type: 'monthly_agent_play',
+          value: parseInt(monthlyPlayLimit, 10),
+          applies_to_agent_id: agentMapping.id,
+          applies_to_user_id: null,
+          applies_to_organization_id: null
+        }, { 
+          onConflict: 'applies_to_agent_id',
+          ignoreDuplicates: false
+        });
+
+      if (limitData) {
+        console.log(`[API PATCH /agents/${elevenlabsAgentId}] Limit upserted successfully:`, limitData);
+      }
+
+      if (limitError) {
+        console.error(`[API PATCH /agents/${elevenlabsAgentId}] Supabase limit error:`, limitError);
+        // Not returning an error here, as the agent update was successful
+        // but we should log this for debugging
+      }
+    } else {
+      // If the monthlyPlayLimit is null or an empty string, delete the existing limit
+      const { error: deleteError } = await supabase
+        .from('app_limits')
+        .delete()
+        .eq('limit_type', 'monthly_agent_play')
+        .eq('applies_to_agent_id', agentMapping.id)
+        .is('applies_to_user_id', null)
+        .is('applies_to_organization_id', null);
+        
+      if (deleteError) {
+        console.error(`[API PATCH /agents/${elevenlabsAgentId}] Supabase delete limit error:`, deleteError);
+      }
     }
 
     return NextResponse.json(

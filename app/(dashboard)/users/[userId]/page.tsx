@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AgentAssignmentList } from "@/components/agent-assignment-list";
 import { DashboardHeader } from "@/components/dashboard-header";
+import { UserQuizResults } from '@/components/user-quiz-results';
 
 type User = {
   user_id: string;
@@ -122,6 +123,7 @@ export default function UserProfilePage() {
             <AgentAssignmentList userId={user.user_id} />
           </CardContent>
         </Card>
+        <UserQuizResults userId={user.user_id} />
       </div>
     </div>
   );

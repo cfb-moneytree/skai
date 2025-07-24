@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-
+import { useEffect } from "react"
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -13,45 +13,47 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff } from "lucide-react"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+export default function SignupPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
   const supabase = createSupabaseBrowserClient();
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push('/dashboard');
+      }
+    };
+
+    checkUser();
+  }, [router, supabase.auth]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError("")
 
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.")
+      setIsLoading(false)
+      return
+    }
+
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      const { error: signUpError } = await supabase.auth.signUp({
         email,
         password,
       });
 
-      if (signInError) {
-        if (signInError.message === "Invalid login credentials") {
-          setError("Invalid email or password.");
-        } else if (signInError.message === "Email not confirmed") {
-          setError("Please confirm your email address before logging in.");
-        } else {
-          setError(signInError.message);
-        }
-      } else if (data.user) {
-        const userRole = data.user.user_metadata?.role;
-
-        if (userRole === 'admin' || userRole === 'user') {
-        } else {
-          // Other roles are not allowed, sign them out immediately
-          await supabase.auth.signOut();
-          setError("Access denied. Your role does not have permission to access the dashboard.");
-          // Clear password field for security
-          setPassword('');
-        }
+      if (signUpError) {
+        setError(signUpError.message);
+      } else {
+        router.push("/login?message=Check your email to confirm your sign-up.")
       }
     } catch (catchError: any) {
       setError(catchError.message || "An unexpected error occurred.");
@@ -63,8 +65,8 @@ export default function LoginPage() {
   return (
     <Card className="w-full">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
-        <CardDescription className="text-center">Enter your email and password to access your account</CardDescription>
+        <CardTitle className="text-2xl font-bold text-center">Sign Up</CardTitle>
+        <CardDescription className="text-center">Enter your email and password to create an account</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
@@ -106,15 +108,26 @@ export default function LoginPage() {
               </Button>
             </div>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="confirm-password">Confirm Password</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              placeholder="confirm password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </div>
         </CardContent>
         <CardFooter className="flex flex-col space-y-4 pt-4">
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Signing in..." : "Sign In"}
+            {isLoading ? "Signing up..." : "Sign Up"}
           </Button>
           <p className="text-sm text-center text-muted-foreground">
-            {"Don't have an account? "}
-            <Link href="/signup" className="text-primary hover:underline">
-              Sign up
+            {"Already have an account? "}
+            <Link href="/login" className="text-primary hover:underline">
+              Sign in
             </Link>
           </p>
         </CardFooter>

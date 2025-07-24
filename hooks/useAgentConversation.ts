@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useVoiceStream } from "voice-stream";
+import { useMicrophoneStream } from './useMicrophoneStream';
 import type { ElevenLabsWebSocketEvent } from "../types/websocket";
 
 const sendMessage = (websocket: WebSocket, request: object) => {
@@ -15,6 +15,17 @@ export interface ConversationMessage {
   speaker: 'user' | 'agent';
   text: string;
   timestamp: Date;
+}
+
+// Helper function to convert ArrayBuffer to Base64
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
 }
 
 export const useAgentConversation = () => {
@@ -44,13 +55,13 @@ export const useAgentConversation = () => {
     console.log("Agent playback interrupted by client.");
   }, []);
 
-
-  const { startStreaming, stopStreaming } = useVoiceStream({
+  // Use the new microphone stream hook
+  const { startStreaming, stopStreaming } = useMicrophoneStream({
     onAudioChunked: (audioData) => {
       if (!websocketRef.current) return;
-
+      const audioBase64 = arrayBufferToBase64(audioData);
       sendMessage(websocketRef.current, {
-        user_audio_chunk: audioData,
+        user_audio_chunk: audioBase64,
       });
     },
   });
@@ -266,6 +277,7 @@ export const useAgentConversation = () => {
         currentSourceRef.current = null;
       }
       audioQueueRef.current = [];
+      isProcessingQueueRef.current = false;
     };
   }, [startStreaming, isConnected, stopStreaming, playNextInQueue, interruptAgentPlayback]);
 

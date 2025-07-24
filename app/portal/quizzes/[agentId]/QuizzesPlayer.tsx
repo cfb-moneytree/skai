@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from "@/components/portal/button";
 import { CheckCircle, Plus } from "lucide-react";
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { v4 as uuidv4 } from 'uuid';
 
 interface Quiz {
   id: string;
@@ -33,8 +34,10 @@ export default function QuizzesPlayer({ agentId }: QuizzesPlayerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [attemptUuid, setAttemptUuid] = useState<string>('');
 
   useEffect(() => {
+    setAttemptUuid(uuidv4());
     const fetchQuizzesAndAttempts = async () => {
       setIsLoading(true);
       setError(null);
@@ -53,45 +56,20 @@ export default function QuizzesPlayer({ agentId }: QuizzesPlayerProps) {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
 
-      if (user) {
-        const { data: attempts, error: attemptsError } = await supabase
-          .from('quiz_attempts')
-          .select('quiz_id, answered_option, is_correct')
-          .eq('user_id', user.id);
+      const quizzesWithSignedUrls = await Promise.all(
+        data.map(async (quiz) => {
+          let signed_media_url: string | undefined = undefined;
+          if (quiz.question_media) {
+            const { data: signedUrlData } = await supabase.storage
+              .from("assessments")
+              .createSignedUrl(quiz.question_media, 60 * 5);
+            signed_media_url = signedUrlData?.signedUrl;
+          }
+          return { ...quiz, signed_media_url, media_type: quiz.media_type };
+        })
+      );
+      setQuizzes(quizzesWithSignedUrls);
 
-        if (attemptsError) {
-          console.error('Error fetching attempts:', attemptsError);
-        } else {
-          const quizzesWithSignedUrlsAndAttempts = await Promise.all(
-            data.map(async (quiz) => {
-              let signed_media_url: string | undefined = undefined;
-              if (quiz.question_media) {
-                const { data: signedUrlData } = await supabase.storage
-                  .from("assessments")
-                  .createSignedUrl(quiz.question_media, 60 * 5);
-                signed_media_url = signedUrlData?.signedUrl;
-              }
-              const attempt = attempts.find(a => a.quiz_id === quiz.id);
-              return { ...quiz, signed_media_url, media_type: quiz.media_type, attempt };
-            })
-          );
-          setQuizzes(quizzesWithSignedUrlsAndAttempts);
-        }
-      } else {
-        const quizzesWithSignedUrls = await Promise.all(
-          data.map(async (quiz) => {
-            let signed_media_url: string | undefined = undefined;
-            if (quiz.question_media) {
-              const { data: signedUrlData } = await supabase.storage
-                .from("assessments")
-                .createSignedUrl(quiz.question_media, 60 * 5);
-              signed_media_url = signedUrlData?.signedUrl;
-            }
-            return { ...quiz, signed_media_url, media_type: quiz.media_type };
-          })
-        );
-        setQuizzes(quizzesWithSignedUrls);
-      }
 
       setIsLoading(false);
     };
@@ -109,45 +87,20 @@ export default function QuizzesPlayer({ agentId }: QuizzesPlayerProps) {
     const currentQuiz = quizzes[currentQuizIndex];
     const isCorrect = optionIndex === currentQuiz.correct_option;
 
-    const { data: existingAttempt, error: fetchError } = await supabase
+    const { error: insertError } = await supabase
       .from('quiz_attempts')
-      .select('id, attempt_number')
-      .eq('user_id', user.id)
-      .eq('quiz_id', currentQuiz.id)
-      .single();
+      .insert({
+        quiz_id: currentQuiz.id,
+        user_id: user.id,
+        answered_option: optionIndex,
+        is_correct: isCorrect,
+        attempt_uuid: attemptUuid,
+      });
 
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      console.error('Error fetching quiz attempt:', fetchError);
-      return;
+    if (insertError) {
+      console.error('Error inserting quiz attempt:', insertError);
     }
 
-    if (existingAttempt) {
-      const { error: updateError } = await supabase
-        .from('quiz_attempts')
-        .update({
-          answered_option: optionIndex,
-          is_correct: isCorrect,
-          attempt_number: existingAttempt.attempt_number + 1,
-        })
-        .eq('id', existingAttempt.id);
-
-      if (updateError) {
-        console.error('Error updating quiz attempt:', updateError);
-      }
-    } else {
-      const { error: insertError } = await supabase
-        .from('quiz_attempts')
-        .insert({
-          quiz_id: currentQuiz.id,
-          user_id: user.id,
-          answered_option: optionIndex,
-          is_correct: isCorrect,
-        });
-
-      if (insertError) {
-        console.error('Error inserting quiz attempt:', insertError);
-      }
-    }
 
     const updatedQuizzes = quizzes.map((quiz, index) => {
       if (index === currentQuizIndex) {
@@ -174,16 +127,44 @@ export default function QuizzesPlayer({ agentId }: QuizzesPlayerProps) {
       if (user) {
         const correctAnswers = quizzes.filter(q => q.attempt?.is_correct).length;
         const totalQuizzes = quizzes.length;
-        const score = totalQuizzes > 0 ? (correctAnswers / totalQuizzes) * 100 : 0;
+        const score = totalQuizzes > 0 ? Math.round((correctAnswers / totalQuizzes) * 100) : 0;
 
-        const { error } = await supabase
+        // Save the score for this attempt
+        const { error: scoreError } = await supabase
+          .from('quiz_attempt_scores')
+          .insert({
+            user_id: user.id,
+            agent_id: agentId,
+            attempt_uuid: attemptUuid,
+            score: score,
+          });
+
+        if (scoreError) {
+          console.error('Error saving quiz score:', scoreError);
+        }
+
+        // Update the best score in user_agents_progress
+        const { data: progress, error: progressError } = await supabase
           .from('user_agents_progress')
-          .update({ is_complete: true, score: score })
+          .select('score')
           .eq('user_id', user.id)
-          .eq('agent_id', agentId);
+          .eq('agent_id', agentId)
+          .single();
 
-        if (error) {
-          console.error('Error updating user progress:', error);
+        if (progressError && progressError.code !== 'PGRST116') {
+          console.error('Error fetching user progress:', progressError);
+        }
+
+        if (!progress || (progress && score > progress.score)) {
+          const { error: updateError } = await supabase
+            .from('user_agents_progress')
+            .update({ is_complete: true, score: score })
+            .eq('user_id', user.id)
+            .eq('agent_id', agentId);
+
+          if (updateError) {
+            console.error('Error updating user progress:', updateError);
+          }
         }
       }
       window.location.replace(`/portal/quizzes/${agentId}/result`);
@@ -239,9 +220,9 @@ export default function QuizzesPlayer({ agentId }: QuizzesPlayerProps) {
                 <button
                   key={index}
                   onClick={() => handleAnswerSelect(index)}
-                  disabled={showResult || !!currentQuiz.attempt}
+                  disabled={showResult}
                   className={`w-full p-4 rounded-lg border-2 transition-all ${
-                    (showResult && selectedAnswer === index) || currentQuiz.attempt?.answered_option === index
+                    (showResult && selectedAnswer === index)
                       ? isCorrect
                         ? "border-green-500 bg-green-50 text-green-700"
                         : "border-red-500 bg-red-50 text-red-700"
@@ -259,7 +240,7 @@ export default function QuizzesPlayer({ agentId }: QuizzesPlayerProps) {
             ))}
           </div>
 
-          {(showResult || currentQuiz.attempt) && (
+          {showResult && (
             <div className="mb-8">
               <div className="flex items-center justify-center space-x-2 mb-4">
                 {isCorrect ? (

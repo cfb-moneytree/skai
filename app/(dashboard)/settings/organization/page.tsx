@@ -34,6 +34,10 @@ export default function SettingsOrganizationPage() {
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const supabase = useState(() => createSupabaseBrowserClient())[0];
 
+  // --- ADDED: Quota State ---
+  const [monthlyQuota, setMonthlyQuota] = useState<number | string>("");
+  const [currentUsage, setCurrentUsage] = useState<number>(0);
+  
   const fetchOrgData = useCallback(async () => {
     try {
       const { data: { user }, error: getUserError } = await supabase.auth.getUser();
@@ -72,6 +76,23 @@ export default function SettingsOrganizationPage() {
           setOrgImageUrl(organizationData.image_url || null);
           setOrgType((organizationData.organization_type as OrganizationType) || "");
           setOrgDescriptionWordCount((organizationData.description?.match(/\S+/g) || []).length);
+        }
+
+        // --- ADDED: Fetch quota ---
+        const { data: quotaData, error: quotaError } = await supabase
+          .from('organization_quotas')
+          .select('monthly_quota_minutes, current_usage_minutes')
+          .eq('organization_id', orgUserData.organization_id)
+          .maybeSingle();
+
+        if (quotaError) {
+          setQuotaError(`Error fetching organization quota: ${quotaError.message}`);
+        } else if (quotaData) {
+          setMonthlyQuota(quotaData.monthly_quota_minutes || "");
+          setCurrentUsage(quotaData.current_usage_minutes || 0);
+        } else {
+          setMonthlyQuota("");
+          setCurrentUsage(0);
         }
       } else {
         setOrgName(""); setOrgDescription(""); setOrgImageUrl(null); setOrgType(""); setOrgDescriptionWordCount(0);
@@ -200,6 +221,19 @@ export default function SettingsOrganizationPage() {
 
   return (
     <div className="grid gap-6">
+      {/* --- ADDED: Quota Card --- */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Usage Quota</CardTitle>
+          <CardDescription>Set the monthly lesson duration quota for the organization.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">Current Monthly Usage</p>
+            <p className="text-2xl font-bold">{currentUsage.toLocaleString()} / {(typeof monthlyQuota === 'number' ? monthlyQuota : 0).toLocaleString()} minutes</p>
+          </div>
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Organization Information</CardTitle>

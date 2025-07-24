@@ -92,7 +92,7 @@ export default function LessonAnalyticsPage() {
         // Fetch progress for all assigned students
         const { data: progressData, error: progressError } = await supabase
           .from("user_agents_progress")
-          .select("user_id, score, is_complete, updated_at")
+          .select("user_id, is_complete, updated_at")
           .eq("agent_id", selectedAgent);
 
         if (progressError) {
@@ -110,17 +110,34 @@ export default function LessonAnalyticsPage() {
             if (usersError) {
               console.error("Error fetching users:", usersError);
             } else {
-              const formattedStudents = progressData.map((progress) => {
-                const user = usersData.users.find((u: any) => u.id === progress.user_id);
-                return {
-                  user_id: progress.user_id,
-                  full_name: user?.full_name || 'N/A',
-                  email: user?.email || 'N/A',
-                  updated_at: new Date(progress.updated_at).toLocaleDateString(),
-                  score: progress.score,
-                };
-              });
-              setStudents(formattedStudents);
+                const { data: scoresData, error: scoresError } = await supabase
+                    .from('quiz_attempt_scores')
+                    .select('user_id, score')
+                    .in('user_id', userIds)
+                    .eq('agent_id', selectedAgent);
+
+                if (scoresError) {
+                    console.error("Error fetching scores:", scoresError);
+                } else {
+                    const highestScores: { [key: string]: number } = {};
+                    for (const score of scoresData) {
+                        if (!highestScores[score.user_id] || score.score > highestScores[score.user_id]) {
+                            highestScores[score.user_id] = score.score;
+                        }
+                    }
+
+                    const formattedStudents = progressData.map((progress) => {
+                        const user = usersData.users.find((u: any) => u.id === progress.user_id);
+                        return {
+                        user_id: progress.user_id,
+                        full_name: user?.full_name || 'N/A',
+                        email: user?.email || 'N/A',
+                        updated_at: new Date(progress.updated_at).toLocaleDateString(),
+                        score: highestScores[progress.user_id] || 0,
+                        };
+                    });
+                    setStudents(formattedStudents);
+                }
             }
           } else {
             setStudents([]);

@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient } from 'lib/supabase/server';
 
 export interface ElevenLabsVoice {
   voice_id: string;
@@ -18,6 +18,7 @@ export interface AgentDataFromUI {
   cover_image?: string | null;
   passing_score?: number | null;
   category_id?: string;
+  monthly_play_limit?: number | null;
 }
 
 export interface EvaluationCriterion {
@@ -28,7 +29,7 @@ export interface EvaluationCriterion {
   use_knowledge_base: boolean;
 }
 
-const API_BASE_URL = "https://api.elevenlabs.io/v1";
+const API_BASE_URL = "https://api.elevenlabs.io";
 
 const RAG_CONFIG = {
   enabled: true,
@@ -245,7 +246,7 @@ export async function createElevenLabsAgent(
         },
         feedback_mode: "during",
         terms_text:
-          '#### Terms and conditions\n\nBy clicking "Agree," and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\nIf you do not wish to have your conversations recorded, please refrain from using this service.',
+          '#### Terms and conditions\\n\\nBy clicking "Agree," and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as described in the Privacy Policy.\\nIf you do not wish to have your conversations recorded, please refrain from using this service.',
         show_avatar_when_collapsed: true,
       },
       evaluation: {},
@@ -321,7 +322,7 @@ export async function createElevenLabsAgent(
   );
 
   try {
-    const response = await fetch(`${API_BASE_URL}/convai/agents/create`, {
+    const response = await fetch(`${API_BASE_URL}/v1/convai/agents/create`, {
       method: "POST",
       headers: {
         "Xi-Api-Key": apiKey,
@@ -447,7 +448,7 @@ export async function getElevenLabsAgentDetails(
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/convai/agents/${agentId}`, {
+    const response = await fetch(`${API_BASE_URL}/v1/convai/agents/${agentId}`, {
       method: "GET",
       headers: {
         "Xi-Api-Key": apiKey,
@@ -622,7 +623,7 @@ export async function updateElevenLabsAgent(
   );
 
   try {
-    const response = await fetch(`${API_BASE_URL}/convai/agents/${agentId}`, {
+    const response = await fetch(`${API_BASE_URL}/v1/convai/agents/${agentId}`, {
       method: "PATCH",
       headers: {
         "Xi-Api-Key": apiKey,
@@ -676,7 +677,7 @@ export async function deleteElevenLabsAgent(agentId: string): Promise<void> {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/convai/agents/${agentId}`, {
+    const response = await fetch(`${API_BASE_URL}/v1/convai/agents/${agentId}`, {
       method: "DELETE",
       headers: {
         "Xi-Api-Key": apiKey,
@@ -742,7 +743,7 @@ export async function getElevenLabsConversations(
   }
   const limit = pageSize || 100;
 
-  const url = new URL(`${API_BASE_URL}/convai/conversations`);
+  const url = new URL(`${API_BASE_URL}/v1/convai/conversations`);
   url.searchParams.append("limit", limit.toString());
   if (agentId) {
     url.searchParams.append("agent_id", agentId);
@@ -814,7 +815,7 @@ export async function getConversationAudio(conversationId: string): Promise<Resp
     throw new Error("Conversation ID is required.");
   }
 
-  const url = `${API_BASE_URL}/convai/conversations/${conversationId}/audio`;
+  const url = `${API_BASE_URL}/v1/convai/conversations/${conversationId}/audio`;
   console.log(`Fetching audio from URL: ${url}`); 
 
   try {
@@ -870,7 +871,7 @@ export async function getDetailedConversation(conversationId: string): Promise<D
     throw new Error("Conversation ID is required.");
   }
 
-  const url = `${API_BASE_URL}/convai/conversations/${conversationId}`;
+  const url = `${API_BASE_URL}/v1/convai/conversations/${conversationId}`;
   console.log(`Fetching detailed conversation from URL: ${url}`); 
 
   try {
@@ -941,7 +942,7 @@ export async function uploadFileToElevenLabsKnowledgeBase(
   const formData = new FormData();
   formData.append("file", new Blob([fileBuffer], { type: fileType }), fileName);
 
-  const url = `${API_BASE_URL}/convai/knowledge-base/file`;
+  const url = `${API_BASE_URL}/v1/convai/knowledge-base/file`;
   console.log(`Uploading file to ElevenLabs Knowledge Base: ${fileName}`);
 
   try {
@@ -992,7 +993,7 @@ export async function triggerElevenLabsRagIndexing(documentationId: string): Pro
     throw new Error("Documentation ID is required to trigger RAG indexing.");
   }
 
-  const url = `${API_BASE_URL}/convai/knowledge-base/${documentationId}/rag-index`;
+  const url = `${API_BASE_URL}/v1/convai/knowledge-base/${documentationId}/rag-index`;
   console.log(`Triggering RAG indexing for Knowledge Base item: ${documentationId} at URL: ${url}`);
 
   try {
@@ -1078,7 +1079,7 @@ export async function updateAgentKnowledgeBase(
   );
 
 
-  const url = `${API_BASE_URL}/convai/agents/${agentId}`;
+  const url = `${API_BASE_URL}/v1/convai/agents/${agentId}`;
   try {
     const response = await fetch(url, {
       method: "PATCH",
@@ -1136,7 +1137,7 @@ export async function addTextToElevenLabsKnowledgeBase(
     text: text,
   };
 
-  const url = `${API_BASE_URL}/convai/knowledge-base/text`;
+  const url = `${API_BASE_URL}/v1/convai/knowledge-base/text`;
   console.log(`Adding text to ElevenLabs Knowledge Base: ${name}`);
 
   try {
@@ -1193,7 +1194,7 @@ export async function getElevenLabsKnowledgeBaseItemText(
     throw new Error("Knowledge base item ID is required.");
   }
 
-  const url = `${API_BASE_URL}/convai/knowledge-base/${itemId}`;
+  const url = `${API_BASE_URL}/v1/convai/knowledge-base/${itemId}`;
   console.log(`Fetching knowledge base item details from: ${url}`);
 
   try {
@@ -1264,7 +1265,7 @@ export async function getElevenLabsTools(): Promise<SimplifiedToolInfo[]> {
     throw new Error("ElevenLabs API key is not configured.");
   }
 
-  const url = `${API_BASE_URL}/convai/tools`;
+  const url = `${API_BASE_URL}/v1/convai/tools`;
   console.log(`Fetching ElevenLabs tools from: ${url}`);
 
   try {
@@ -1334,7 +1335,7 @@ export async function deleteElevenLabsTool(toolId: string): Promise<void> {
     throw new Error("Tool ID is required for deletion.");
   }
 
-  const url = `${API_BASE_URL}/convai/tools/${toolId}`;
+  const url = `${API_BASE_URL}/v1/convai/tools/${toolId}`;
   console.log(`Attempting to delete ElevenLabs tool with ID: ${toolId} from URL: ${url}`);
 
   try {

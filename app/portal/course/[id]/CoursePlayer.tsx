@@ -8,6 +8,7 @@ import { Button } from "@/components/portal/button"
 import { Card, CardContent } from "@/components/portal/card"
 import { Badge } from "@/components/ui/badge"
 import { FileQuestion } from "lucide-react"
+import { MonthlyLimitDialog } from "./MonthlyLimitDialog"
 import { Play, Pause, SkipBack, Volume2, Maximize, Settings, MessageSquare, Bookmark, Share, CheckCircle } from "lucide-react"
 import Image from "next/image"
 
@@ -48,6 +49,9 @@ export default function CoursePlayer({ courseId }: CoursePlayerProps) {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [hasAttempts, setHasAttempts] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showLimitDialog, setShowLimitDialog] = useState(false);
+  const [remainingPlays, setRemainingPlays] = useState<number>(0);
+  const [playLimit, setPlayLimit] = useState<number>(0);
   const [callId, setCallId] = useState<string | null>(null);
   const [isCourseStarted, setIsCourseStarted] = useState(false);
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
@@ -63,6 +67,9 @@ export default function CoursePlayer({ courseId }: CoursePlayerProps) {
   const [currentSlideTitle, setCurrentSlideTitle] = useState<string | null>(null);
 
   const BUCKET_NAME = 'lessons';
+
+  // --- ADDED: Organization Quota State ---
+  const [orgQuota, setOrgQuota] = useState<{ monthly_quota_minutes: number; current_usage_minutes: number } | null>(null);
 
   const convaiWidgetRef = useCallback((node: HTMLElement | null) => {
     if (node !== null && course?.elevenlabs_agent_id && callId) {
@@ -185,6 +192,59 @@ export default function CoursePlayer({ courseId }: CoursePlayerProps) {
       }
 
       if (session.user) {
+            // Get play limit and current count
+            const currentDate = new Date();
+            const monthYear = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+
+            const { data: orgs } = await supabase
+              .from('organization_users')
+              .select('organization_id')
+              .eq('user_id', session.user.id);
+
+            const orgIds = orgs?.map(org => org.organization_id) || [];
+
+        // --- ADDED: Fetch orgQuota ---
+        if (orgIds.length > 0) {
+          const { data: quotaData, error: quotaError } = await supabase
+            .from('organization_quotas')
+            .select('monthly_quota_minutes, current_usage_minutes')
+            .eq('organization_id', orgIds[0]) // Assumes one org per user
+            .single();
+
+          if (quotaError) {
+            console.error("Error fetching organization quota:", quotaError);
+          } else if (quotaData) {
+            setOrgQuota(quotaData);
+          }
+        }
+
+            const { data: limitData } = await supabase
+              .from('app_limits')
+              .select('value')
+              .eq('limit_type', 'monthly_agent_play')
+              .or(`applies_to_user_id.eq.${session.user.id},applies_to_organization_id.in.(${orgIds}),applies_to_agent_id.eq.${courseId}`)
+              .order('applies_to_user_id', { ascending: false })
+              .order('applies_to_organization_id', { ascending: false })
+              .limit(1);
+
+            const limit = limitData?.[0]?.value;
+            if (limit === undefined) {
+              setError("This lesson requires a monthly play limit to be set. Please contact your administrator.");
+              setIsLoading(false);
+              return;
+            }
+            setPlayLimit(limit);
+
+            const { data: playData } = await supabase
+              .from('monthly_agent_plays')
+              .select('play_count')
+              .eq('user_id', session.user.id)
+              .eq('agent_id', courseId)
+              .eq('month_year', monthYear)
+              .maybeSingle();
+
+            setRemainingPlays(limit - (playData?.play_count || 0));
+
             const { data: progress, error: progressError } = await supabase
               .from('user_agents_progress')
               .select('is_complete, slide_id, score')
@@ -307,8 +367,82 @@ export default function CoursePlayer({ courseId }: CoursePlayerProps) {
   }, [isCourseStarted, course, supabase, callId, loadSlideContent]);
 
   const handleStartCourse = async () => {
+    if (!user || !course) return;
+
+    // --- ADDED: Organization Quota Check ---
+    if (orgQuota && orgQuota.current_usage_minutes >= orgQuota.monthly_quota_minutes) {
+      setError("Your organization has exceeded its monthly lesson quota. Please contact your administrator.");
+      setShowLimitDialog(true);
+      return;
+    }
+
+    // Get current month-year
+    const currentDate = new Date();
+    const monthYear = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+
+    // Check monthly play limit
+    const { data: orgs } = await supabase
+      .from('organization_users')
+      .select('organization_id')
+      .eq('user_id', user.id);
+
+    const orgIds = orgs?.map(org => org.organization_id) || [];
+
+    const { data: limitData } = await supabase
+      .from('app_limits')
+      .select('value')
+      .eq('limit_type', 'monthly_agent_play')
+      .or(`applies_to_user_id.eq.${user.id},applies_to_organization_id.in.(${orgIds}),applies_to_agent_id.eq.${course.id}`)
+      .order('applies_to_user_id', { ascending: false })
+      .order('applies_to_organization_id', { ascending: false })
+      .limit(1);
+
+    if (!limitData) {
+      setError("Error checking play limit. Please try again.");
+      return;
+    }
+    const monthlyLimit = limitData[0]?.value;
+    if (monthlyLimit === undefined) {
+      setError("This lesson requires a monthly play limit to be set. Please contact your administrator.");
+      return;
+    }
+    setPlayLimit(monthlyLimit);
+
+    // Get current play count
+    const { data: playData } = await supabase
+      .from('monthly_agent_plays')
+      .select('play_count')
+      .eq('user_id', user.id)
+      .eq('agent_id', course.id)
+      .eq('month_year', monthYear)
+      .single();
+
+    const currentPlayCount = playData?.play_count || 0;
+    const remaining = monthlyLimit - currentPlayCount;
+    setRemainingPlays(remaining);
+
+    if (remaining <= 0) {
+      setShowLimitDialog(true);
+      return;
+    }
+
+    // Increment play count
+    const { error: updateError } = await supabase
+      .from('monthly_agent_plays')
+      .upsert({
+        user_id: user.id,
+        agent_id: course.id,
+        month_year: monthYear,
+        play_count: currentPlayCount + 1
+      }, { onConflict: 'user_id,agent_id,month_year' });
+
+    if (updateError) {
+      setError("Error updating play count. Please try again.");
+      return;
+    }
+
     setIsCourseStarted(true);
-    if (user && course && lessons.length > 0) {
+    if (lessons.length > 0) {
       if (resumeData) {
         loadSlideContent(resumeData.slideTitle);
       }
@@ -329,20 +463,24 @@ export default function CoursePlayer({ courseId }: CoursePlayerProps) {
   };
 
   const handleRestartCourse = async () => {
-    if (user && course) {
+    if (user && course && lessons.length > 0) {
+      const firstLesson = lessons[0];
       const { error } = await supabase
         .from('user_agents_progress')
-        .delete()
+        .update({ slide_id: firstLesson.id })
         .eq('user_id', user.id)
         .eq('agent_id', course.id);
 
       if (error) {
-        console.error('Error deleting progress:', error);
+        console.error('Error restarting course:', error);
       } else {
         setOverridePrompt(null);
         setResumeData(null);
-        setHasProgress(false);
-        handleStartCourse();
+        setShowTargetedCourse(false);
+        loadSlideContent(firstLesson.title);
+        if (!isCourseStarted) {
+          setIsCourseStarted(true);
+        }
       }
     }
   };
@@ -428,19 +566,38 @@ export default function CoursePlayer({ courseId }: CoursePlayerProps) {
                   </div>
                   <div className="p-6">
                     <h1 className="text-3xl font-bold mb-2">{course.title}</h1>
-                    <p className="text-slate-300 mb-6">Ready to start?</p>
-                    <Button size="lg" variant="outline" className="w-full mt-4 bg-slate-600 hover:bg-slate-500" onClick={handleStartCourse}>
-                      {hasProgress ? 'Continue' : 'Start'}
-                    </Button>
-                    {hasProgress && (
-                      <Button size="lg" variant="outline" className="w-full mt-4 bg-slate-600 hover:bg-slate-500" onClick={handleRestartCourse}>
-                        Restart
-                      </Button>
-                    )}
-                    {showTargetedCourse && (
-                      <Button size="lg" variant="outline" className="w-full mt-4 bg-slate-600 hover:bg-slate-500" onClick={handleStartTargetedCourse}>
-                        Targeted Course
-                      </Button>
+                    <p className="text-slate-300 mb-2">Ready to start?</p>
+                    <div className="flex items-center gap-2 mb-6">
+                      <Badge variant={remainingPlays === 0 ? "destructive" : remainingPlays <= 2 ? "warning" : "default"} className="text-sm">
+                        {remainingPlays} / {playLimit} plays remaining
+                      </Badge>
+                    </div>
+                    {remainingPlays > 0 && (
+                      <>
+                        <Button 
+                          size="lg" 
+                          variant="outline" 
+                          className="w-full mt-4 bg-slate-600 hover:bg-slate-500" 
+                          onClick={handleStartCourse}
+                        >
+                          {hasProgress ? 'Continue' : 'Start'}
+                        </Button>
+                        {hasProgress && (
+                          <Button 
+                            size="lg" 
+                            variant="outline" 
+                            className="w-full mt-4 bg-slate-600 hover:bg-slate-500" 
+                            onClick={handleRestartCourse}
+                          >
+                            Restart
+                          </Button>
+                        )}
+                        {showTargetedCourse && (
+                          <Button size="lg" variant="outline" className="w-full mt-4 bg-slate-600 hover:bg-slate-500" onClick={handleStartTargetedCourse}>
+                            Targeted Course
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </CardContent>
@@ -546,6 +703,12 @@ export default function CoursePlayer({ courseId }: CoursePlayerProps) {
           strategy="afterInteractive"
         />
       </div>
+      <MonthlyLimitDialog
+        isOpen={showLimitDialog}
+        onClose={() => setShowLimitDialog(false)}
+        remainingPlays={remainingPlays}
+        totalLimit={playLimit}
+      />
     </>
   );
 }
